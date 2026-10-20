@@ -1349,6 +1349,13 @@ class IfsData:
 
         self.lastResponseRaw = data_str
 
+        # A status reply cut short (the reader ends a reply after 20 ms without data) lacks its
+        # later fields, which would be read as 0: no spools, no stall. Keep the previous state.
+        if not re.search(r'FFS_state:\s*\d+.*silk_state:\s*\d+.*chan:\s*\d+.*'
+                         r'ffs_channels_insert:\s*\d+.*stall_state:\s*\d+(?:\s|$)', data_str, re.S):
+            logging.info("IFS: ignoring incomplete status reply: %r", data_str)
+            return
+
         silk_state = 0
         silk = 0
         chan = 0
