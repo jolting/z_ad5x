@@ -834,6 +834,17 @@ class zmod_ifs:
         prutok = gcmd.get_int('PRUTOK', 1)
         config = self.get_prutok_config(prutok)
 
+        # The active slot already feeds the extruder: there is nothing to insert. Without this
+        # check, an insert flag reported by the IFS for that slot mid-print pushes up to
+        # filament_autoinsert_full_length mm into the running print.
+        with self.ifs_data.lock:
+            active = self.ifs_data.cur_port
+        if prutok == active and self.get_extruder_sensor():
+            self.gcode.respond_info(f"Пруток {prutok} уже загружен в экструдер, автоматическая вставка пропущена" if self.lang == 'ru' else f"Filament {prutok} is already loaded in the extruder, skipping automatic insertion")
+            gcmd_tmp = self.gcode.create_gcode_command("IFS_F23", "IFS_F23", {'PRUTOK': prutok})
+            self.cmd_IFS_F23(gcmd_tmp)
+            return
+
         self.gcode.respond_info(f"Автоматическая вставка прутка {prutok}" if self.lang == 'ru' else f"Automatic filament insertion {prutok}")
         self.wait_for_state()
 
