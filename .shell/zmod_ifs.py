@@ -308,6 +308,8 @@ class zmod_ifs:
     def wait_for_state(self, Port=0, FFS_state=None, silk=None, stall=None, extruder=None, timeout=10):
         start_time = self.reactor.monotonic()
         if self.open_mode:
+            if not (extruder or silk or stall):
+                return True, RET_OK, {}
             while not self.stop_thread:
                 if extruder:
                     if self.get_extruder_sensor() == extruder['status']:
@@ -947,7 +949,7 @@ class zmod_ifs:
         gcmd_tmp = self.gcode.create_gcode_command("IFS_F39", "IFS_F39", {'PRUTOK': prutok})
         self.cmd_IFS_F39(gcmd_tmp)
 
-    def _cmd_IFS_F10(self, prutok, leng, speed):
+    def _cmd_IFS_F10(self, prutok, leng, speed, sync=1):
         if not self.ifs:
             self.gcode.run_script_from_command("_IFS_OFF")
             return
@@ -955,7 +957,7 @@ class zmod_ifs:
         self.gcode.respond_info(f"Вставить пруток {prutok} длинной {leng} со скоростью {speed}" if self.lang == 'ru' else f"Insert filament {prutok} with length {leng} at speed {speed}")
         if self.open_mode:
             speed_mms = max(1.0, float(speed) / 60.0)
-            self.gcode.run_script_from_command(f"MANUAL_STEPPER STEPPER=ifs_feeder MOVE={leng} SPEED={speed_mms} ACCEL=500")
+            self.gcode.run_script_from_command(f"MANUAL_STEPPER STEPPER=ifs_feeder MOVE={leng} SPEED={speed_mms} ACCEL=500 SYNC={sync}")
             return f"F10 ok. FFS channel {prutok} feeding."
 
         response = self.send_command_and_wait(f"F10 C{prutok} L{leng} S{speed}", result=f"F10 ok. FFS channel {prutok} feeding.")
@@ -978,7 +980,8 @@ class zmod_ifs:
         sleep = gcmd.get_int('SLEEP', 0)
 
         for attempt in range(self.retry_count):
-            response = self._cmd_IFS_F10(prutok, leng, speed)
+            sync = 0 if (self.open_mode and wait == 1 and check == 1) else 1
+            response = self._cmd_IFS_F10(prutok, leng, speed, sync=sync)
             if sleep == 1:
                 # Ждем пока треть прутка пройдет
                 self.reactor.pause(self.reactor.monotonic() + (leng * 20) // speed + 1)
@@ -1008,7 +1011,7 @@ class zmod_ifs:
             else:
                 break
 
-    def _cmd_IFS_F11(self, prutok, leng, speed):
+    def _cmd_IFS_F11(self, prutok, leng, speed, sync=1):
         if not self.ifs:
             self.gcode.run_script_from_command("_IFS_OFF")
             return
@@ -1016,7 +1019,7 @@ class zmod_ifs:
         self.gcode.respond_info(f"Извлечь пруток {prutok} длинной {leng} со скоростью {speed}" if self.lang == 'ru' else f"Extract filament {prutok} with length {leng} at speed {speed}")
         if self.open_mode:
             speed_mms = max(1.0, float(speed) / 60.0)
-            self.gcode.run_script_from_command(f"MANUAL_STEPPER STEPPER=ifs_feeder MOVE=-{leng} SPEED={speed_mms} ACCEL=500")
+            self.gcode.run_script_from_command(f"MANUAL_STEPPER STEPPER=ifs_feeder MOVE=-{leng} SPEED={speed_mms} ACCEL=500 SYNC={sync}")
             return f"F11 ok. FFS channel {prutok} exiting."
 
         response = self.send_command_and_wait(f"F11 C{prutok} L{leng} S{speed}", result=f"F11 ok. FFS channel {prutok} exiting.")
@@ -1036,7 +1039,8 @@ class zmod_ifs:
         check = gcmd.get_int('CHECK', 0)
 
         for attempt in range(self.retry_count):
-            response = self._cmd_IFS_F11(prutok, leng, speed)
+            sync = 0 if (self.open_mode and wait == 1 and check == 1) else 1
+            response = self._cmd_IFS_F11(prutok, leng, speed, sync=sync)
             if wait == 1:
                 if check == 1:
                     success, ret_code, values = self.wait_for_state(
