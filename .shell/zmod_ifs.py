@@ -78,6 +78,13 @@ class zmod_ifs:
         self.reactor = self.printer.get_reactor()
         self.gcode = self.printer.lookup_object('gcode')
 
+        self.open_mode = config.getboolean('open_mode', False)
+        self.selector_homed = False
+        self.selector_channel_dist = config.getfloat('selector_channel_dist', 12.0)
+        self.current_channel = 1
+        self.feeder = None
+        self.selector = None
+
         self.lang = 'en'
         self.ifs = False
         self.zmod = self.printer.lookup_object('zmod', None)
@@ -180,6 +187,18 @@ class zmod_ifs:
 
         self.get_lang()
         self.get_prutok_config(1)
+
+        # Check for open mode (either explicitly configured or [mcu ifs] present)
+        if not self.open_mode and self.printer.lookup_object('mcu ifs', None) is not None:
+            self.open_mode = True
+
+        if self.open_mode:
+            self.ifs = True
+            self.feeder = self.printer.lookup_object('manual_stepper ifs_feeder', None)
+            self.selector = self.printer.lookup_object('manual_stepper ifs_selector', None)
+            logging.info("IFS: Running in Open Klipper Mode (using native [mcu ifs])")
+            return
+
         self.sensor_thread.start()
 
     def get_ifs_status(self):
@@ -277,6 +296,17 @@ class zmod_ifs:
     #     )
     def wait_for_state(self, Port=0, FFS_state=None, silk=None, stall=None, extruder=None, timeout=10):
         start_time = self.reactor.monotonic()
+        if self.open_mode:
+            while not self.stop_thread:
+                if extruder:
+                    if self.get_extruder_sensor() == extruder['status']:
+                        return False, RET_EXTRUDER, {}
+                if self.reactor.monotonic() - start_time > timeout:
+                    return False, RET_TIMEOUT, {}
+                eventtime = self.reactor.monotonic()
+                self.reactor.pause(eventtime + HOST_REPORT_TIME)
+            return True, RET_OK, {}
+
         check_state = None
         if FFS_state is not None:
             if Port != 0:
@@ -382,6 +412,11 @@ class zmod_ifs:
         return result
 
     def get_ifs_sensor(self, port):
+        if self.open_mode:
+            sensor = self.printer.lookup_object(f'filament_switch_sensor ifs_spool_{port}', None)
+            if sensor is not None:
+                return bool(sensor.runout_helper.filament_present)
+            return True
         return self.ifs_data.get_stall(port)
 
     def set_cur_port(self, port):
@@ -390,6 +425,11 @@ class zmod_ifs:
     def get_port(self, port=0):
         if not self.ifs:
             return False
+        if self.open_mode:
+            sensor = self.printer.lookup_object(f'filament_switch_sensor ifs_spool_{port}', None)
+            if sensor is not None:
+                return bool(sensor.runout_helper.filament_present)
+            return True
         return self.ifs_data.get_port(port)
 
     def print_str(self, string, info=True):
@@ -896,6 +936,11 @@ class zmod_ifs:
             return
 
         self.gcode.respond_info(f"Вставить пруток {prutok} длинной {leng} со скоростью {speed}" if self.lang == 'ru' else f"Insert filament {prutok} with length {leng} at speed {speed}")
+        if self.open_mode:
+            speed_mms = max(1.0, float(speed) / 60.0)
+            self.gcode.run_script_from_command(f"MANUAL_STEPPER STEPPER=ifs_feeder MOVE={leng} SPEED={speed_mms} ACCEL=500")
+            return f"F10 ok. FFS channel {prutok} feeding."
+
         response = self.send_command_and_wait(f"F10 C{prutok} L{leng} S{speed}", result=f"F10 ok. FFS channel {prutok} feeding.")
         self.info(f"F10 C{prutok} L{leng} S{speed} > {response}")
         return response
@@ -952,6 +997,11 @@ class zmod_ifs:
             return
 
         self.gcode.respond_info(f"Извлечь пруток {prutok} длинной {leng} со скоростью {speed}" if self.lang == 'ru' else f"Extract filament {prutok} with length {leng} at speed {speed}")
+        if self.open_mode:
+            speed_mms = max(1.0, float(speed) / 60.0)
+            self.gcode.run_script_from_command(f"MANUAL_STEPPER STEPPER=ifs_feeder MOVE=-{leng} SPEED={speed_mms} ACCEL=500")
+            return f"F11 ok. FFS channel {prutok} exiting."
+
         response = self.send_command_and_wait(f"F11 C{prutok} L{leng} S{speed}", result=f"F11 ok. FFS channel {prutok} exiting.")
         self.info(f"F11 C{prutok} L{leng} S{speed} > {response}")
         return response
@@ -996,6 +1046,9 @@ class zmod_ifs:
             self.gcode.run_script_from_command("_IFS_OFF")
             return
 
+        if self.open_mode:
+            return
+
         prutok = gcmd.get_int('PRUTOK', 1)
         wait = gcmd.get_int('WAIT', 1)
 
@@ -1021,6 +1074,17 @@ class zmod_ifs:
         wait = gcmd.get_int('WAIT', 1)
 
         self.gcode.respond_info(f"Блокировка прутка {prutok}" if self.lang == 'ru' else f"Locking filament {prutok}")
+        if self.open_mode:
+            if not self.selector_homed:
+                self.gcode.run_script_from_command("MANUAL_STEPPER STEPPER=ifs_selector SET_POSITION=0")
+                self.gcode.run_script_from_command("MANUAL_STEPPER STEPPER=ifs_selector MOVE=-50 STOP_ON_ENDSTOP=1 SPEED=20")
+                self.gcode.run_script_from_command("MANUAL_STEPPER STEPPER=ifs_selector SET_POSITION=0")
+                self.selector_homed = True
+            target_pos = (prutok - 1) * self.selector_channel_dist
+            self.gcode.run_script_from_command(f"MANUAL_STEPPER STEPPER=ifs_selector MOVE={target_pos} SPEED=25")
+            self.gcode.run_script_from_command("MANUAL_STEPPER STEPPER=ifs_feeder ENABLE=1")
+            self.current_channel = prutok
+            return
         for attempt in range(self.retry_count):
             response = self.send_command_and_wait(f"F24 C{prutok}", result=f"F24 ok. chan {prutok}.")
             self.info(f"F24 C{prutok} > {response}")
@@ -1041,6 +1105,9 @@ class zmod_ifs:
         wait = gcmd.get_int('WAIT', 1)
 
         self.gcode.respond_info(f"Разблокировка прутка {prutok}" if self.lang == 'ru' else f"Unlocking filament {prutok}")
+        if self.open_mode:
+            self.gcode.run_script_from_command("MANUAL_STEPPER STEPPER=ifs_feeder ENABLE=0")
+            return
         for attempt in range(self.retry_count):
             response = self.send_command_and_wait(f"F39 C{prutok}", result=f"F39 ok. FFS channel {prutok} release.")
             self.info(f"F39 C{prutok} > {response}")
@@ -1070,6 +1137,9 @@ class zmod_ifs:
         wait = gcmd.get_int('WAIT', 1)
 
         self.gcode.respond_info(f"Разблокировка всех прутков" if self.lang == 'ru' else f"Unlocking all filaments")
+        if self.open_mode:
+            self.gcode.run_script_from_command("MANUAL_STEPPER STEPPER=ifs_feeder ENABLE=0")
+            return
         for attempt in range(self.retry_count):
             response = self.send_command_and_wait("F18", result=f"F18 ok", timeout=10.0)
             self.info(f"F18 > {response}")
@@ -1089,6 +1159,9 @@ class zmod_ifs:
         wait = gcmd.get_int('WAIT', 0)
 
         self.gcode.respond_info(f"Принудительно останавливаю движение прутка" if self.lang == 'ru' else f"Force stop filament movement")
+        if self.open_mode:
+            self.gcode.run_script_from_command("MANUAL_STEPPER STEPPER=ifs_feeder STOP=1")
+            return
 
         for attempt in range(self.retry_count):
             response = self.send_command_and_wait(f"F112", result=("F112 ok.", "F112 ok. yes."))
@@ -1119,6 +1192,18 @@ class zmod_ifs:
 
     cmd_IFS_STATUS_help = "Get current IFS status"
     def cmd_IFS_STATUS(self, gcmd):
+        if self.open_mode:
+            ports = [1 if self.get_port(i) else 0 for i in range(1, self.color_limit + 1)]
+            status = {
+                'State': FFS_STATUS_READY,
+                'CurrentPort': self.current_channel,
+                'Ports': ports,
+                'Silk': sum(v << i for i, v in enumerate(ports)),
+                'stall_state': 0,
+                'open_mode': True
+            }
+            gcmd.respond_info(json.dumps(status))
+            return
         values = self.ifs_data.get_values()
         gcmd.respond_info(json.dumps(values))
 
