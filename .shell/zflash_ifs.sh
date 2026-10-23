@@ -115,3 +115,4 @@ if [ -x /usr/data/zmod/zmod/.shell/restart_klipper.sh ]; then
 fi
 
 exit $FLASH_RET
+

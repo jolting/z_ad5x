@@ -213,6 +213,17 @@ class zmod_ifs:
             'available': self.ifs,
             'color_limit': self.color_limit
         }
+        if self.open_mode:
+            ports = [1 if self.get_port(i) else 0 for i in range(1, self.color_limit + 1)]
+            status.update({
+                'State': FFS_STATUS_READY,
+                'CurrentPort': self.current_channel,
+                'Ports': ports,
+                'Silk': sum(v << i for i, v in enumerate(ports)),
+                'stall_state': 0,
+                'open_mode': True
+            })
+            return status
         ifs_data = getattr(self, 'ifs_data', None)
         if ifs_data is not None:
             values = ifs_data.get_values()
@@ -301,6 +312,12 @@ class zmod_ifs:
                 if extruder:
                     if self.get_extruder_sensor() == extruder['status']:
                         return False, RET_EXTRUDER, {}
+                if silk is not None:
+                    if self.get_port(Port) == silk['status']:
+                        return False, RET_SILK, {}
+                if stall is not None:
+                    if self.get_ifs_sensor(Port) == stall['status']:
+                        return False, RET_STALL, {}
                 if self.reactor.monotonic() - start_time > timeout:
                     return False, RET_TIMEOUT, {}
                 eventtime = self.reactor.monotonic()
@@ -413,10 +430,10 @@ class zmod_ifs:
 
     def get_ifs_sensor(self, port):
         if self.open_mode:
-            sensor = self.printer.lookup_object(f'filament_switch_sensor ifs_spool_{port}', None)
-            if sensor is not None:
-                return bool(sensor.runout_helper.filament_present)
-            return True
+            buffer_sensor = self.printer.lookup_object(f'temperature_sensor ifs_spool{port}_buffer', None)
+            if buffer_sensor is not None:
+                return bool(buffer_sensor.last_temp < 4500.0)
+            return self.get_port(port)
         return self.ifs_data.get_stall(port)
 
     def set_cur_port(self, port):
@@ -426,10 +443,10 @@ class zmod_ifs:
         if not self.ifs:
             return False
         if self.open_mode:
-            sensor = self.printer.lookup_object(f'filament_switch_sensor ifs_spool_{port}', None)
-            if sensor is not None:
-                return bool(sensor.runout_helper.filament_present)
-            return True
+            inlet = self.printer.lookup_object(f'temperature_sensor ifs_spool{port}_inlet', None)
+            if inlet is not None:
+                return bool(inlet.last_temp < 1500.0)
+            return False
         return self.ifs_data.get_port(port)
 
     def print_str(self, string, info=True):

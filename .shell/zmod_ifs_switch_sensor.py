@@ -78,19 +78,23 @@ class ZmodIfsPortSensor:
         self.port = config.getint('port', 0, minval=0)
         self.get_status = self.runout_helper.get_status
         self.printer.add_object(f"filament_switch_sensor {self.name}", self)
+        if self.name.startswith("ifs_spool_"):
+            alias = f"_ifs_port_sensor_{self.port}"
+            self.printer.add_object(f"filament_switch_sensor {alias}", self)
 
         self.reactor = self.printer.get_reactor()
         sig = inspect.signature(self.runout_helper.note_filament_present)
         self.new = 'eventtime' in sig.parameters
 
         self.last_state = True
-        self.timer = self.reactor.register_timer(self.check_state, self.reactor.NOW)
+        self.ifs = None
 
         self.printer.register_event_handler("klippy:ready", self._handle_ready)
         self.gcode = self.printer.lookup_object('gcode')
 
     def _handle_ready(self):
         self.ifs = self.printer.lookup_object('zmod_ifs')
+        self.timer = self.reactor.register_timer(self.check_state, self.reactor.NOW)
         self.check_state(self.reactor.NOW)
 
     def check_state(self, eventtime):
@@ -104,7 +108,8 @@ class ZmodIfsPortSensor:
         is_printing = print_state in ('printing')
 
         if not is_printing and hasattr(self, "last_state") and self.last_state and not new_state:
-            self.runout_helper._exec_gcode("", self.runout_helper.runout_gcode)
+            if self.runout_helper.runout_gcode:
+                self.runout_helper._exec_gcode("", self.runout_helper.runout_gcode)
         self.last_state = new_state
 
         sig = inspect.signature(self.runout_helper.note_filament_present)
@@ -116,6 +121,8 @@ class ZmodIfsPortSensor:
         return eventtime + 0.5
 
     def get_filament(self):
+        if not self.ifs:
+            return False
         return self.ifs.get_port(self.port)
 
 def load_config_prefix(config):
