@@ -1098,7 +1098,7 @@ class zmod_ifs:
         if self.open_mode:
             if not self.selector_homed:
                 self.gcode.run_script_from_command("MANUAL_STEPPER STEPPER=ifs_selector SET_POSITION=0")
-                self.gcode.run_script_from_command("MANUAL_STEPPER STEPPER=ifs_selector MOVE=-50 STOP_ON_ENDSTOP=home SPEED=20")
+                self.gcode.run_script_from_command("MANUAL_STEPPER STEPPER=ifs_selector MOVE=-100 STOP_ON_ENDSTOP=home SPEED=20")
                 self.gcode.run_script_from_command("MANUAL_STEPPER STEPPER=ifs_selector SET_POSITION=0")
                 self.selector_homed = True
             target_pos = (prutok - 1) * self.selector_channel_dist
