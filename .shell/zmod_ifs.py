@@ -957,7 +957,7 @@ class zmod_ifs:
         self.gcode.respond_info(f"Вставить пруток {prutok} длинной {leng} со скоростью {speed}" if self.lang == 'ru' else f"Insert filament {prutok} with length {leng} at speed {speed}")
         if self.open_mode:
             speed_mms = max(1.0, float(speed) / 60.0)
-            self.gcode.run_script_from_command(f"MANUAL_STEPPER STEPPER=ifs_feeder MOVE={leng} SPEED={speed_mms} ACCEL=500 SYNC={sync}")
+            self.gcode.run_script_from_command(f"MANUAL_STEPPER STEPPER=ifs_feeder ENABLE=1 MOVE={leng} SPEED={speed_mms} ACCEL=500 SYNC={sync}")
             return f"F10 ok. FFS channel {prutok} feeding."
 
         response = self.send_command_and_wait(f"F10 C{prutok} L{leng} S{speed}", result=f"F10 ok. FFS channel {prutok} feeding.")
@@ -1019,7 +1019,7 @@ class zmod_ifs:
         self.gcode.respond_info(f"Извлечь пруток {prutok} длинной {leng} со скоростью {speed}" if self.lang == 'ru' else f"Extract filament {prutok} with length {leng} at speed {speed}")
         if self.open_mode:
             speed_mms = max(1.0, float(speed) / 60.0)
-            self.gcode.run_script_from_command(f"MANUAL_STEPPER STEPPER=ifs_feeder MOVE=-{leng} SPEED={speed_mms} ACCEL=500 SYNC={sync}")
+            self.gcode.run_script_from_command(f"MANUAL_STEPPER STEPPER=ifs_feeder ENABLE=1 MOVE=-{leng} SPEED={speed_mms} ACCEL=500 SYNC={sync}")
             return f"F11 ok. FFS channel {prutok} exiting."
 
         response = self.send_command_and_wait(f"F11 C{prutok} L{leng} S{speed}", result=f"F11 ok. FFS channel {prutok} exiting.")
@@ -1097,12 +1097,13 @@ class zmod_ifs:
         self.gcode.respond_info(f"Блокировка прутка {prutok}" if self.lang == 'ru' else f"Locking filament {prutok}")
         if self.open_mode:
             if not self.selector_homed:
+                self.gcode.run_script_from_command("MANUAL_STEPPER STEPPER=ifs_selector ENABLE=1")
                 self.gcode.run_script_from_command("MANUAL_STEPPER STEPPER=ifs_selector SET_POSITION=0")
                 self.gcode.run_script_from_command("MANUAL_STEPPER STEPPER=ifs_selector MOVE=-100 STOP_ON_ENDSTOP=home SPEED=20")
                 self.gcode.run_script_from_command("MANUAL_STEPPER STEPPER=ifs_selector SET_POSITION=0")
                 self.selector_homed = True
             target_pos = (prutok - 1) * self.selector_channel_dist
-            self.gcode.run_script_from_command(f"MANUAL_STEPPER STEPPER=ifs_selector MOVE={target_pos} SPEED=25")
+            self.gcode.run_script_from_command(f"MANUAL_STEPPER STEPPER=ifs_selector ENABLE=1 MOVE={target_pos} SPEED=25")
             self.gcode.run_script_from_command("MANUAL_STEPPER STEPPER=ifs_feeder ENABLE=1")
             self.current_channel = prutok
             return
