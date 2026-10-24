@@ -10,6 +10,17 @@ source /usr/data/zmod/zmod/.shell/0.sh
 [ ${C5PRO} -eq 1 ] && source /usr/data/zmod/zmod/.shell/patch_c5pro.sh
 [ ${AD5X} -eq 1 ]  && source /usr/data/zmod/zmod/.shell/patch_ad5x.sh
 
+# Early export of IFS MCU reset line on AD5X
+if [ ${AD5X} -eq 1 ]; then
+    if [ ! -d /sys/class/gpio/gpio34 ]; then
+        echo 34 > /sys/class/gpio/export 2>/dev/null || true
+    fi
+    if [ -d /sys/class/gpio/gpio34 ]; then
+        echo out > /sys/class/gpio/gpio34/direction 2>/dev/null || true
+        echo 1 > /sys/class/gpio/gpio34/value 2>/dev/null || true
+    fi
+fi
+
 CHECH_ARCH=`uname -m`
 if [ "${CHECH_ARCH}" == "armv7l" ]; then
     CONFIG_DIR="/opt/config"
@@ -42,6 +53,7 @@ app_startup_mcu()
     CONTRIL_M=${CONTROL_DIR}${CONTROL_VERSION}UpdateM
 
     if  [ -f "${CONTRIL_M}" ] || [ -f ${CONTRIL_FLAG} ]; then
+        rm -f "${CONTRIL_FLAG}" "${CONTRIL_M}"
         [ ${KLIPPER13} -eq 1 ] && mount -o bind /usr/data/zmod/zmod/.shell/update_mcu.sh ${CONTROL_DIR}${CONTROL_VERSION}run.sh
         if [ ${AD5X} -eq 1 ]; then
             cd ${CONTROL_DIR}${CONTROL_VERSION}

@@ -21,7 +21,7 @@ export PATH="$PATH:/opt/bin:/opt/sbin"
 
 pid=$(ps | grep [f]irmwareExe | awk '{print $1}')
 
-if [ $pid -ne 0 ]; then
+if [ -n "$pid" ] && [ "$pid" -gt 0 ] 2>/dev/null && which gdb >/dev/null 2>&1; then
 
     echo Screen executable PID is $pid, calling GDB to perform manipulations...
 
@@ -56,4 +56,17 @@ detach
 quit
 EOF
 
+else
+    echo "firmwareExe not running, restarting Klipper directly..."
+    start-stop-daemon -K -p /run/klipper.pid 2>/dev/null || true
+    rm -f /run/klipper.pid /var/run/klipper.pid
+    for pid in $(pgrep -f "klippy\.py" 2>/dev/null); do
+        kill -9 "$pid" 2>/dev/null || true
+    done
+    sleep 1
+    if [ -x /usr/data/zmod/zmod/.shell/klipper13.sh ]; then
+        /usr/data/zmod/zmod/.shell/klipper13.sh &
+    elif [ -x /usr/prog/klipper/start.sh ]; then
+        /usr/prog/klipper/start.sh &
+    fi
 fi

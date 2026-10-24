@@ -35,6 +35,14 @@ update_mcu_mainboard()
 	if [ -f $FIRMWARE_Board_M3 ];then
 		echo "burn M3 firmware..."
 		$WORK_DIR/NationsCommand -c -d --fn $FIRMWARE_Board_M3 --v -r
+		# Ensure mainboard BOOT0 (GPIO 50) is 0 so it runs application instead of bootloader
+		if [ ! -d /sys/class/gpio/gpio50 ]; then
+			echo 50 > /sys/class/gpio/export 2>/dev/null || true
+		fi
+		if [ -d /sys/class/gpio/gpio50 ]; then
+			echo out > /sys/class/gpio/gpio50/direction 2>/dev/null || true
+			echo 0 > /sys/class/gpio/gpio50/value 2>/dev/null || true
+		fi
 	fi
     fi
 }

@@ -417,6 +417,7 @@ fix_config()
         check_link ${MOD_CONF}/mod/display_off.cfg /usr/data/zmod/zmod/translate/${ZLANG}/ad5x_display_off.cfg
         check_link ${MOD_CONF}/mod/ad5x_config_native.cfg /usr/data/zmod/zmod/translate/${ZLANG}/ad5x_config_native.cfg
         check_link ${MOD_CONF}/mod/ad5x_config_off.cfg /usr/data/zmod/zmod/translate/${ZLANG}/ad5x_config_off.cfg
+        check_link ${MOD_CONF}/ifs_klipper.cfg /usr/data/zmod/zmod/ifs_klipper.cfg
 
         # В Версии 1.0.7 перенесли конфиг в /usr/prog/config/
         [ -d /usr/prog/config/mod ] && rm -rf /usr/prog/config/mod
