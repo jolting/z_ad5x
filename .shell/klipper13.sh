@@ -34,6 +34,18 @@ if [ ${C5PRO} -eq 1 ] ||[ ${AD5X} -eq 1 ]; then
     find /usr/prog/PROGRAM/control/ -name NationsCommand| while read a; do $a -r ; done;
 
     if [ ${AD5X} -eq 1 ]; then
+        # Ensure mainboard BOOT0 is 0 and pulse NRST (GPIO 49) after NationsCommand
+        echo 0 > /sys/class/gpio/gpio50/value 2>/dev/null || true
+        if [ ! -d /sys/class/gpio/gpio49 ]; then
+            echo 49 > /sys/class/gpio/export 2>/dev/null || true
+        fi
+        if [ -d /sys/class/gpio/gpio49 ]; then
+            echo out > /sys/class/gpio/gpio49/direction 2>/dev/null || true
+            echo 0 > /sys/class/gpio/gpio49/value 2>/dev/null || true
+            usleep 100000
+            echo 1 > /sys/class/gpio/gpio49/value 2>/dev/null || true
+        fi
+
         # Allow IFS factory bootloader (~1.2s timeout) to exit to application
         sleep 2
     fi
