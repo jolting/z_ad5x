@@ -920,6 +920,19 @@ stepper: stepper_x, stepper_y, stepper_z
         fi
     fi
 
+    # IFS open (native Klipper [mcu ifs]) mode: ifs_open_mode in variables.cfg is the source of truth
+    if [ ${AD5X} -eq 1 ]; then
+        if grep -q "^ifs_open_mode = 1" ${MOD_CONF}/mod_data/variables.cfg; then
+            if grep -q '^#[[:space:]]*\[include ifs_klipper\.cfg\]' ${PRINTER_CFG}; then
+                sed -i 's/^#[[:space:]]*\[include ifs_klipper\.cfg\]/[include ifs_klipper.cfg]/' ${PRINTER_CFG} && NEED_REBOOT=1
+            elif ! grep -q '^\[include ifs_klipper\.cfg\]' ${PRINTER_CFG}; then
+                sed -i '/^\[include \.\/mod_data\/user\.cfg\]/a [include ifs_klipper.cfg]' ${PRINTER_CFG} && NEED_REBOOT=1
+            fi
+        else
+            grep -q '^\[include ifs_klipper\.cfg\]' ${PRINTER_CFG} && sed -i 's/^\[include ifs_klipper\.cfg\]/# [include ifs_klipper.cfg]/' ${PRINTER_CFG} && NEED_REBOOT=1
+        fi
+    fi
+
     if [ ${AD5M} -eq 1 ]; then
         if ! { head -n 2 ${PRINTER_CFG} | tail -n 1 | grep -qE '^\[include \.\/mod\/klipper1[13]\.cfg\]$'; }; then
             sed -i '\|\[include \./mod/klipper11\.cfg\]|d' "${PRINTER_CFG}"
